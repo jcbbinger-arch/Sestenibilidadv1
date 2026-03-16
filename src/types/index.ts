@@ -30,6 +30,15 @@ export interface Dish {
   category: 'starter' | 'main' | 'dessert' | 'drink';
 }
 
+export interface User {
+  uid: string;
+  email: string;
+  displayName: string;
+  role: 'admin' | 'student';
+  status: 'pending' | 'approved';
+  createdAt: string;
+}
+
 export interface Project {
   id: string;
   teamName: string;

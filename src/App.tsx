@@ -21,13 +21,13 @@ import {
   Loader2
 } from 'lucide-react';
 import { zones } from './data/zones';
-import { Zone, Project } from './types';
+import { Zone, Project, User as AppUser } from './types';
 import { auth, db } from './firebase';
 import { 
   signInWithPopup, 
   GoogleAuthProvider, 
   onAuthStateChanged, 
-  User,
+  User as FirebaseUser,
   signOut 
 } from 'firebase/auth';
 import { 
@@ -37,33 +37,66 @@ import {
   where, 
   onSnapshot,
   serverTimestamp,
-  Timestamp
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  orderBy
 } from 'firebase/firestore';
 
 export default function App() {
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [appUser, setAppUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [allUsers, setAllUsers] = useState<AppUser[]>([]);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [teamName, setTeamName] = useState('');
+  const [isAdminView, setIsAdminView] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        const isAdminEmail = firebaseUser.email === 'managerproapp@gmail.com';
+        
+        if (!userDoc.exists()) {
+          const newUser: AppUser = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            displayName: firebaseUser.displayName || 'Alumno',
+            role: isAdminEmail ? 'admin' : 'student',
+            status: isAdminEmail ? 'approved' : 'pending',
+            createdAt: new Date().toISOString()
+          };
+          await setDoc(userDocRef, newUser);
+          setAppUser(newUser);
+        } else {
+          setAppUser(userDoc.data() as AppUser);
+        }
+      } else {
+        setAppUser(null);
+      }
+      setUser(firebaseUser);
       setLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !appUser || (appUser.status !== 'approved' && appUser.role !== 'admin')) {
       setProjects([]);
       return;
     }
 
-    const q = query(collection(db, 'projects'), where('ownerId', '==', user.uid));
+    const q = appUser.role === 'admin' 
+      ? query(collection(db, 'projects'), orderBy('createdAt', 'desc'))
+      : query(collection(db, 'projects'), where('ownerId', '==', user.uid));
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const projectsData = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -71,11 +104,38 @@ export default function App() {
       })) as unknown as Project[];
       setProjects(projectsData);
     }, (error) => {
-      console.error("Firestore Error:", error);
+      console.error("Firestore Error (Projects):", error);
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, appUser]);
+
+  useEffect(() => {
+    if (!appUser || appUser.role !== 'admin') {
+      setAllUsers([]);
+      return;
+    }
+
+    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const usersData = snapshot.docs.map(doc => ({
+        ...doc.data()
+      })) as unknown as AppUser[];
+      setAllUsers(usersData);
+    }, (error) => {
+      console.error("Firestore Error (Users):", error);
+    });
+
+    return () => unsubscribe();
+  }, [appUser]);
+
+  const handleApproveUser = async (uid: string) => {
+    try {
+      await updateDoc(doc(db, 'users', uid), { status: 'approved' });
+    } catch (error) {
+      console.error("Approval Error:", error);
+    }
+  };
 
   const handleLogin = async () => {
     const provider = new GoogleAuthProvider();
@@ -149,9 +209,20 @@ export default function App() {
                   <span className="text-[10px] text-gray-500 lowercase">{user.email}</span>
                   <button onClick={handleLogout} className="text-[#5A5A40] hover:underline">Cerrar Sesión</button>
                 </div>
+                
+                {appUser?.role === 'admin' && (
+                  <button 
+                    onClick={() => setIsAdminView(!isAdminView)}
+                    className="bg-amber-600 text-white px-6 py-2 rounded-full hover:bg-amber-700 transition-colors flex items-center gap-2"
+                  >
+                    <Info size={16} />
+                    {isAdminView ? 'Ver como Alumno' : 'Modo Dios'}
+                  </button>
+                )}
+
                 <button className="bg-[#5A5A40] text-white px-6 py-2 rounded-full hover:bg-[#4a4a35] transition-colors flex items-center gap-2">
                   <Users size={16} />
-                  Mis Proyectos ({projects.length})
+                  {appUser?.role === 'admin' ? `Todos los Proyectos (${projects.length})` : `Mis Proyectos (${projects.length})`}
                 </button>
               </div>
             ) : (
@@ -196,7 +267,103 @@ export default function App() {
       </AnimatePresence>
 
       {/* Hero Section */}
-      <header className="relative h-[70vh] flex items-center justify-center overflow-hidden">
+      {user && appUser?.status === 'pending' && appUser?.role !== 'admin' ? (
+        <div className="min-h-[80vh] flex items-center justify-center px-6">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white p-12 rounded-[3rem] shadow-2xl max-w-2xl text-center"
+          >
+            <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-8">
+              <Loader2 className="animate-spin" size={40} />
+            </div>
+            <h2 className="text-4xl font-bold mb-6">Acceso en Espera</h2>
+            <p className="text-xl text-[#4a4a4a] leading-relaxed mb-8">
+              Hola <strong>{user.displayName}</strong>. Tu cuenta ha sido registrada correctamente, pero aún necesita ser aprobada por el administrador.
+            </p>
+            <p className="text-gray-500 italic">
+              Por favor, contacta con tu profesor para que te dé acceso al sistema.
+            </p>
+            <button 
+              onClick={handleLogout}
+              className="mt-10 text-[#5A5A40] font-sans font-bold uppercase tracking-widest text-sm hover:underline"
+            >
+              Cerrar Sesión
+            </button>
+          </motion.div>
+        </div>
+      ) : isAdminView ? (
+        <div className="py-24 px-6 max-w-7xl mx-auto">
+          <div className="flex justify-between items-end mb-16">
+            <div>
+              <h2 className="text-5xl font-bold mb-4">Panel de Administración</h2>
+              <p className="text-xl text-gray-500">Gestiona los alumnos y supervisa todos los proyectos regionales.</p>
+            </div>
+            <div className="bg-amber-100 text-amber-800 px-6 py-2 rounded-full font-sans font-bold text-sm uppercase tracking-widest">
+              Modo Dios Activo
+            </div>
+          </div>
+
+          <div className="grid lg:grid-cols-3 gap-12">
+            <div className="lg:col-span-1 space-y-8">
+              <h3 className="text-2xl font-bold flex items-center gap-2">
+                <Users className="text-[#5A5A40]" />
+                Alumnos Registrados
+              </h3>
+              <div className="space-y-4">
+                {allUsers.filter(u => u.role !== 'admin').map((u) => (
+                  <div key={u.uid} className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex justify-between items-center">
+                    <div>
+                      <p className="font-bold">{u.displayName}</p>
+                      <p className="text-xs text-gray-500">{u.email}</p>
+                      <span className={`text-[10px] uppercase font-bold tracking-tighter ${u.status === 'approved' ? 'text-green-600' : 'text-amber-600'}`}>
+                        {u.status === 'approved' ? 'Aprobado' : 'Pendiente'}
+                      </span>
+                    </div>
+                    {u.status === 'pending' && (
+                      <button 
+                        onClick={() => handleApproveUser(u.uid)}
+                        className="bg-green-600 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-green-700 transition-colors"
+                      >
+                        Aprobar
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="lg:col-span-2 space-y-8">
+              <h3 className="text-2xl font-bold flex items-center gap-2">
+                <UtensilsCrossed className="text-[#5A5A40]" />
+                Proyectos en Curso
+              </h3>
+              <div className="grid sm:grid-cols-2 gap-6">
+                {projects.map((p) => (
+                  <div key={p.id} className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
+                    <div className="flex justify-between items-start mb-4">
+                      <h4 className="text-xl font-bold">{p.teamName}</h4>
+                      <span className="bg-[#f5f5f0] px-3 py-1 rounded-full text-[10px] font-bold uppercase">
+                        {zones.find(z => z.id === p.zoneId)?.name}
+                      </span>
+                    </div>
+                    <div className="space-y-3">
+                      {p.milestones.map((m) => (
+                        <div key={m.id} className="flex items-center gap-2 text-sm">
+                          <div className={`w-2 h-2 rounded-full ${m.status === 'completed' ? 'bg-green-500' : 'bg-gray-300'}`} />
+                          <span className={m.status === 'completed' ? 'text-gray-400 line-through' : ''}>{m.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <header className="relative h-[70vh] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img 
             src="https://picsum.photos/seed/murcia-landscape/1920/1080" 
@@ -461,6 +628,8 @@ export default function App() {
           </div>
         </div>
       </section>
+        </>
+      )}
 
       {/* Footer */}
       <footer className="bg-[#1a1a1a] text-white py-20 px-6">

@@ -25,12 +25,29 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' || 
+         request.auth.token.email == 'managerproapp@gmail.com');
+    }
+
+    function isApproved() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'approved' || isAdmin());
+    }
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
     function isDocOwner() {
       return isAuthenticated() && request.auth.uid == resource.data.ownerId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'status']) &&
+             data.uid == request.auth.uid &&
+             data.email == request.auth.token.email;
     }
 
     function isValidProject(data) {
@@ -41,14 +58,19 @@ service cloud.firestore {
              data.createdAt is timestamp;
     }
 
-    match /projects/{projectId} {
+    match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidProject(request.resource.data);
-      allow update: if isDocOwner() && 
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isAdmin();
+    }
+
+    match /projects/{projectId} {
+      allow read: if isApproved();
+      allow create: if isApproved() && isValidProject(request.resource.data);
+      allow update: if (isDocOwner() || isAdmin()) && 
                       isValidProject(request.resource.data) &&
-                      request.resource.data.ownerId == resource.data.ownerId &&
-                      request.resource.data.createdAt == resource.data.createdAt;
-      allow delete: if isDocOwner();
+                      request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if isDocOwner() || isAdmin();
     }
   }
 }

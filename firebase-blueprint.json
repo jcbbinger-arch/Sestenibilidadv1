@@ -1,5 +1,19 @@
 {
   "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and access control",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "student"] },
+        "status": { "type": "string", "enum": ["pending", "approved"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "status"]
+    },
     "Project": {
       "title": "Project",
       "description": "A gastronomic project created by a team",
