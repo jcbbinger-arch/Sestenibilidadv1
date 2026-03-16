@@ -18,9 +18,13 @@ import {
   LogIn,
   LogOut,
   Plus,
-  Loader2
+  Loader2,
+  ChevronDown,
+  BookOpen,
+  ClipboardList
 } from 'lucide-react';
 import { zones } from './data/zones';
+import { tasks } from './data/tasks';
 import { Zone, Project, User as AppUser } from './types';
 import { auth, db } from './firebase';
 import { 
@@ -55,6 +59,8 @@ export default function App() {
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [teamName, setTeamName] = useState('');
   const [isAdminView, setIsAdminView] = useState(false);
+  const [expandedTask, setExpandedTask] = useState<string | null>(null);
+  const [expandedPart, setExpandedPart] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -226,13 +232,16 @@ export default function App() {
                 </button>
               </div>
             ) : (
-              <button 
-                onClick={handleLogin}
-                className="bg-[#5A5A40] text-white px-6 py-2 rounded-full hover:bg-[#4a4a35] transition-colors flex items-center gap-2"
-              >
-                <LogIn size={16} />
-                Acceso Alumnos
-              </button>
+              <div className="flex flex-col items-end">
+                <button 
+                  onClick={handleLogin}
+                  className="bg-[#5A5A40] text-white px-6 py-2 rounded-full hover:bg-[#4a4a35] transition-colors flex items-center gap-2"
+                >
+                  <LogIn size={16} />
+                  Acceso con Google
+                </button>
+                <span className="text-[9px] text-gray-400 mt-1 uppercase tracking-tighter">Registro automático para alumnos</span>
+              </div>
             )}
           </div>
 
@@ -258,9 +267,23 @@ export default function App() {
               <button onClick={() => setIsMenuOpen(false)}>Inicio</button>
               <button onClick={() => setIsMenuOpen(false)}>Zonas</button>
               <button onClick={() => setIsMenuOpen(false)}>Metodología</button>
-              <button className="bg-[#5A5A40] text-white px-6 py-4 rounded-2xl" onClick={() => setIsMenuOpen(false)}>
-                Mi Proyecto
-              </button>
+              {!user && (
+                <button 
+                  className="bg-[#5A5A40] text-white px-6 py-4 rounded-2xl flex items-center justify-center gap-2" 
+                  onClick={() => {
+                    handleLogin();
+                    setIsMenuOpen(false);
+                  }}
+                >
+                  <LogIn size={20} />
+                  Acceso con Google
+                </button>
+              )}
+              {user && (
+                <button className="bg-[#5A5A40] text-white px-6 py-4 rounded-2xl" onClick={() => setIsMenuOpen(false)}>
+                  Mi Proyecto
+                </button>
+              )}
             </div>
           </motion.div>
         )}
@@ -364,38 +387,121 @@ export default function App() {
       ) : (
         <>
           <header className="relative h-[70vh] flex items-center justify-center overflow-hidden">
-        <div className="absolute inset-0 z-0">
-          <img 
-            src="https://picsum.photos/seed/murcia-landscape/1920/1080" 
-            alt="Paisaje de Murcia" 
-            className="w-full h-full object-cover opacity-60"
-            referrerPolicy="no-referrer"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#f5f5f0]"></div>
-        </div>
-        
-        <div className="relative z-10 text-center px-6 max-w-4xl">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-          >
-            <span className="uppercase tracking-[0.3em] text-sm font-sans font-semibold text-[#5A5A40] mb-4 block">
-              Región de Murcia
-            </span>
-            <h2 className="text-6xl md:text-8xl font-bold mb-6 leading-tight">
-              Sabores de <br />
-              <span className="italic font-light">Nuestra Tierra</span>
-            </h2>
-            <p className="text-xl md:text-2xl text-[#4a4a4a] mb-10 max-w-2xl mx-auto leading-relaxed">
-              Un viaje gastronómico por la sostenibilidad y la tradición de nuestras comarcas.
-            </p>
-            <button className="bg-[#5A5A40] text-white px-10 py-4 rounded-full text-lg font-sans font-semibold hover:bg-[#4a4a35] transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1">
-              Explorar el Mapa
-            </button>
-          </motion.div>
-        </div>
-      </header>
+            <div className="absolute inset-0 z-0">
+              <img 
+                src="https://picsum.photos/seed/murcia-landscape/1920/1080" 
+                alt="Paisaje de Murcia" 
+                className="w-full h-full object-cover opacity-60"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#f5f5f0]"></div>
+            </div>
+            
+            <div className="relative z-10 text-center px-6 max-w-4xl">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8 }}
+              >
+                <span className="uppercase tracking-[0.3em] text-sm font-sans font-semibold text-[#5A5A40] mb-4 block">
+                  Región de Murcia
+                </span>
+                <h2 className="text-6xl md:text-8xl font-bold mb-6 leading-tight">
+                  Sabores de <br />
+                  <span className="italic font-light">Nuestra Tierra</span>
+                </h2>
+                <p className="text-xl md:text-2xl text-[#4a4a4a] mb-10 max-w-2xl mx-auto leading-relaxed">
+                  Un viaje gastronómico por la sostenibilidad y la tradición de nuestras comarcas.
+                </p>
+                <button className="bg-[#5A5A40] text-white px-10 py-4 rounded-full text-lg font-sans font-semibold hover:bg-[#4a4a35] transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1">
+                  Explorar el Mapa
+                </button>
+              </motion.div>
+            </div>
+          </header>
+
+          {/* Tasks Section */}
+          <section className="py-24 px-6 max-w-5xl mx-auto">
+            <div className="flex items-center gap-4 mb-12">
+              <div className="w-12 h-12 bg-[#5A5A40] text-white rounded-2xl flex items-center justify-center">
+                <ClipboardList size={24} />
+              </div>
+              <div>
+                <h3 className="text-4xl font-bold">Tareas del Proyecto</h3>
+                <p className="text-[#5A5A40] font-sans font-bold uppercase tracking-widest text-xs mt-1">Guía paso a paso para tu equipo</p>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              {tasks.map((task) => (
+                <div key={task.id} className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
+                  <button 
+                    onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
+                    className="w-full px-10 py-8 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-4">
+                      <BookOpen className="text-[#5A5A40]" size={24} />
+                      <h4 className="text-2xl font-bold text-left">{task.title}</h4>
+                    </div>
+                    <motion.div
+                      animate={{ rotate: expandedTask === task.id ? 180 : 0 }}
+                    >
+                      <ChevronDown size={24} />
+                    </motion.div>
+                  </button>
+
+                  <AnimatePresence>
+                    {expandedTask === task.id && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="border-t border-gray-100"
+                      >
+                        <div className="p-8 space-y-4">
+                          {task.parts.map((part) => (
+                            <div key={part.id} className="bg-[#f5f5f0] rounded-3xl overflow-hidden">
+                              <button 
+                                onClick={() => setExpandedPart(expandedPart === part.id ? null : part.id)}
+                                className="w-full px-8 py-6 flex items-center justify-between hover:bg-[#ebebe5] transition-colors"
+                              >
+                                <span className="font-sans font-bold uppercase tracking-widest text-sm text-[#5A5A40]">
+                                  {part.title}
+                                </span>
+                                <motion.div
+                                  animate={{ rotate: expandedPart === part.id ? 180 : 0 }}
+                                >
+                                  <ChevronDown size={20} />
+                                </motion.div>
+                              </button>
+                              
+                              <AnimatePresence>
+                                {expandedPart === part.id && (
+                                  <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                  >
+                                    <div className="px-8 pb-8 pt-2 space-y-4">
+                                      {part.content.map((text, idx) => (
+                                        <p key={idx} className="text-lg text-[#4a4a4a] leading-relaxed">
+                                          {text}
+                                        </p>
+                                      ))}
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ))}
+            </div>
+          </section>
 
       {/* Project Info */}
       <section className="py-24 px-6 max-w-7xl mx-auto">
