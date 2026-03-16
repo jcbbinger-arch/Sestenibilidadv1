@@ -68,7 +68,7 @@ export default function App() {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         const userDoc = await getDoc(userDocRef);
         
-        const isAdminEmail = firebaseUser.email === 'managerproapp@gmail.com';
+        const isAdminEmail = firebaseUser.email === 'managerproapp@gmail.com' || firebaseUser.email === 'jcbbinger@gmail.com';
         
         if (!userDoc.exists()) {
           const newUser: AppUser = {
@@ -144,11 +144,17 @@ export default function App() {
   };
 
   const handleLogin = async () => {
+    setLoading(true);
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({
+      prompt: 'select_account'
+    });
+    
     try {
       await signInWithPopup(auth, provider);
     } catch (error) {
       console.error("Login Error:", error);
+      setLoading(false);
     }
   };
 
@@ -204,12 +210,8 @@ export default function App() {
           
           <div className="hidden md:flex items-center gap-8 text-sm uppercase tracking-widest font-sans font-medium">
             <button className="hover:text-[#5A5A40] transition-colors">Inicio</button>
-            <button className="hover:text-[#5A5A40] transition-colors">Zonas</button>
-            <button className="hover:text-[#5A5A40] transition-colors">Metodología</button>
             
-            {loading ? (
-              <Loader2 className="animate-spin text-[#5A5A40]" size={20} />
-            ) : user ? (
+            {user ? (
               <div className="flex items-center gap-4">
                 <div className="flex flex-col items-end">
                   <span className="text-[10px] text-gray-500 lowercase">{user.email}</span>
@@ -235,12 +237,12 @@ export default function App() {
               <div className="flex flex-col items-end">
                 <button 
                   onClick={handleLogin}
-                  className="bg-[#5A5A40] text-white px-6 py-2 rounded-full hover:bg-[#4a4a35] transition-colors flex items-center gap-2"
+                  className="bg-[#5A5A40] text-white px-6 py-2 rounded-full hover:bg-[#4a4a35] transition-colors flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
                 >
                   <LogIn size={16} />
                   Acceso con Google
                 </button>
-                <span className="text-[9px] text-gray-400 mt-1 uppercase tracking-tighter">Registro automático para alumnos</span>
+                <span className="text-[9px] text-gray-400 mt-1 uppercase tracking-tighter">Solo para alumnos registrados</span>
               </div>
             )}
           </div>
@@ -289,28 +291,111 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Hero Section */}
-      {user && appUser?.status === 'pending' && appUser?.role !== 'admin' ? (
-        <div className="min-h-[80vh] flex items-center justify-center px-6">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white p-12 rounded-[3rem] shadow-2xl max-w-2xl text-center"
-          >
-            <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-8">
-              <Loader2 className="animate-spin" size={40} />
+      {/* Main Content Area */}
+      {!user ? (
+        <main>
+          <header className="relative min-h-[90vh] flex items-center justify-center overflow-hidden">
+            <div className="absolute inset-0 z-0">
+              <img 
+                src="https://picsum.photos/seed/murcia-gastronomy/1920/1080" 
+                alt="Gastronomía de Murcia" 
+                className="w-full h-full object-cover opacity-40"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#f5f5f0]/50 to-[#f5f5f0]"></div>
             </div>
-            <h2 className="text-4xl font-bold mb-6">Acceso en Espera</h2>
-            <p className="text-xl text-[#4a4a4a] leading-relaxed mb-8">
-              Hola <strong>{user.displayName}</strong>. Tu cuenta ha sido registrada correctamente, pero aún necesita ser aprobada por el administrador.
+            
+            <div className="relative z-10 text-center px-6 max-w-5xl">
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 1 }}
+              >
+                <span className="uppercase tracking-[0.4em] text-sm font-sans font-bold text-[#5A5A40] mb-6 block">
+                  Proyecto Educativo Interdisciplinar
+                </span>
+                <h2 className="text-7xl md:text-9xl font-bold mb-8 leading-tight tracking-tighter">
+                  Sabores de <br />
+                  <span className="italic font-light serif">Nuestra Tierra</span>
+                </h2>
+                <div className="w-24 h-1 bg-[#5A5A40] mx-auto mb-10 opacity-30"></div>
+                <p className="text-2xl md:text-3xl text-[#4a4a4a] mb-12 max-w-3xl mx-auto leading-relaxed font-light">
+                  Una plataforma exclusiva para alumnos de Hostelería y Turismo. 
+                  Explora la riqueza gastronómica de la Región de Murcia a través de la sostenibilidad y la tradición.
+                </p>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
+                  <button 
+                    onClick={handleLogin}
+                    className="bg-[#5A5A40] text-white px-12 py-5 rounded-full text-xl font-sans font-bold hover:bg-[#4a4a35] transition-all shadow-2xl hover:shadow-emerald-900/20 hover:-translate-y-1 flex items-center gap-3"
+                  >
+                    <LogIn size={24} />
+                    Entrar al Proyecto
+                  </button>
+                </div>
+                <p className="mt-8 text-sm text-gray-500 font-sans uppercase tracking-widest">
+                  Acceso restringido mediante cuenta de Google
+                </p>
+              </motion.div>
+            </div>
+          </header>
+
+          <section className="py-32 px-6 bg-white">
+            <div className="max-w-7xl mx-auto grid md:grid-cols-3 gap-16">
+              <div className="space-y-6">
+                <div className="w-16 h-16 bg-[#f5f5f0] rounded-2xl flex items-center justify-center text-[#5A5A40]">
+                  <MapPin size={32} />
+                </div>
+                <h3 className="text-3xl font-bold">Investigación Regional</h3>
+                <p className="text-xl text-gray-600 leading-relaxed">
+                  Analiza las comarcas de Murcia, sus productos locales y la herencia culinaria que define nuestra identidad.
+                </p>
+              </div>
+              <div className="space-y-6">
+                <div className="w-16 h-16 bg-[#f5f5f0] rounded-2xl flex items-center justify-center text-[#5A5A40]">
+                  <Leaf size={32} />
+                </div>
+                <h3 className="text-3xl font-bold">Sostenibilidad Real</h3>
+                <p className="text-xl text-gray-600 leading-relaxed">
+                  Aprende a diseñar menús que respeten el medio ambiente, priorizando el producto de proximidad y el residuo cero.
+                </p>
+              </div>
+              <div className="space-y-6">
+                <div className="w-16 h-16 bg-[#f5f5f0] rounded-2xl flex items-center justify-center text-[#5A5A40]">
+                  <Users size={32} />
+                </div>
+                <h3 className="text-3xl font-bold">Trabajo en Equipo</h3>
+                <p className="text-xl text-gray-600 leading-relaxed">
+                  Colabora con tus compañeros en la creación de una propuesta gastronómica profesional y coherente.
+                </p>
+              </div>
+            </div>
+          </section>
+        </main>
+      ) : appUser?.status === 'pending' && appUser?.role !== 'admin' ? (
+        <div className="min-h-[85vh] flex items-center justify-center px-6">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white p-16 rounded-[4rem] shadow-2xl max-w-3xl text-center border border-amber-100"
+          >
+            <div className="w-24 h-24 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-10">
+              <Loader2 className="animate-spin" size={48} />
+            </div>
+            <h2 className="text-5xl font-bold mb-8">Cuenta en Revisión</h2>
+            <p className="text-2xl text-[#4a4a4a] leading-relaxed mb-10">
+              Bienvenido, <strong>{user.displayName}</strong>. <br />
+              Tu registro se ha completado con éxito, pero el acceso a los contenidos del proyecto debe ser aprobado manualmente por el profesor.
             </p>
-            <p className="text-gray-500 italic">
-              Por favor, contacta con tu profesor para que te dé acceso al sistema.
-            </p>
+            <div className="bg-[#f5f5f0] p-8 rounded-3xl mb-10">
+              <p className="text-lg text-[#5A5A40] font-medium">
+                Por favor, avisa a tu profesor en clase para que active tu perfil en el panel de control.
+              </p>
+            </div>
             <button 
               onClick={handleLogout}
-              className="mt-10 text-[#5A5A40] font-sans font-bold uppercase tracking-widest text-sm hover:underline"
+              className="text-[#5A5A40] font-sans font-bold uppercase tracking-[0.2em] text-sm hover:underline flex items-center gap-2 mx-auto"
             >
+              <LogOut size={16} />
               Cerrar Sesión
             </button>
           </motion.div>
