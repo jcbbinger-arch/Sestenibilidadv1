@@ -32,7 +32,9 @@ import {
   GoogleAuthProvider, 
   onAuthStateChanged, 
   User as FirebaseUser,
-  signOut 
+  signOut,
+  setPersistence,
+  browserLocalPersistence
 } from 'firebase/auth';
 import { 
   collection, 
@@ -43,6 +45,7 @@ import {
   serverTimestamp,
   doc,
   getDoc,
+  getDocFromServer,
   setDoc,
   updateDoc,
   orderBy
@@ -61,34 +64,55 @@ export default function App() {
   const [isAdminView, setIsAdminView] = useState(false);
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [expandedPart, setExpandedPart] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error: any) {
+        if (error.message?.includes('the client is offline')) {
+          console.error("Firestore connection failed: client is offline");
+          setLoginError("No se pudo conectar con la base de datos. Verifica tu conexión o la configuración de Firebase.");
+        }
+      }
+    };
+    testConnection();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDoc = await getDoc(userDocRef);
-        
-        const isAdminEmail = firebaseUser.email === 'managerproapp@gmail.com' || firebaseUser.email === 'jcbbinger@gmail.com';
-        
-        if (!userDoc.exists()) {
-          const newUser: AppUser = {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email || '',
-            displayName: firebaseUser.displayName || 'Alumno',
-            role: isAdminEmail ? 'admin' : 'student',
-            status: isAdminEmail ? 'approved' : 'pending',
-            createdAt: new Date().toISOString()
-          };
-          await setDoc(userDocRef, newUser);
-          setAppUser(newUser);
+      try {
+        if (firebaseUser) {
+          const userDocRef = doc(db, 'users', firebaseUser.uid);
+          const userDoc = await getDoc(userDocRef);
+          
+          const isAdminEmail = firebaseUser.email === 'managerproapp@gmail.com' || firebaseUser.email === 'jcbbinger@gmail.com';
+          
+          if (!userDoc.exists()) {
+            const newUser: AppUser = {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              displayName: firebaseUser.displayName || 'Alumno',
+              role: isAdminEmail ? 'admin' : 'student',
+              status: isAdminEmail ? 'approved' : 'pending',
+              createdAt: new Date().toISOString()
+            };
+            await setDoc(userDocRef, newUser);
+            setAppUser(newUser);
+          } else {
+            setAppUser(userDoc.data() as AppUser);
+          }
         } else {
-          setAppUser(userDoc.data() as AppUser);
+          setAppUser(null);
         }
-      } else {
-        setAppUser(null);
+      } catch (error) {
+        console.error("Auth State Error:", error);
+        setLoginError("Error al sincronizar el perfil. Por favor, recarga la página.");
+      } finally {
+        setUser(firebaseUser);
+        setLoading(false);
       }
-      setUser(firebaseUser);
-      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -145,15 +169,30 @@ export default function App() {
 
   const handleLogin = async () => {
     setLoading(true);
+    setLoginError(null);
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({
       prompt: 'select_account'
     });
     
     try {
+      await setPersistence(auth, browserLocalPersistence);
       await signInWithPopup(auth, provider);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login Error:", error);
+      let message = "No se pudo iniciar sesión. Por favor, inténtalo de nuevo.";
+      
+      if (error.code === 'auth/popup-blocked') {
+        message = "El navegador bloqueó la ventana emergente. Por favor, permite las ventanas emergentes para este sitio.";
+      } else if (error.code === 'auth/unauthorized-domain') {
+        message = `Este dominio (${window.location.hostname}) no está autorizado en Firebase. Por favor, añádelo en la consola de Firebase (Authentication > Settings > Authorized Domains).`;
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        message = "Cerraste la ventana de acceso antes de completar el proceso.";
+      } else {
+        message = `Error (${error.code || 'unknown'}): ${error.message}`;
+      }
+      
+      setLoginError(message);
       setLoading(false);
     }
   };
@@ -332,6 +371,68 @@ export default function App() {
                     Entrar al Proyecto
                   </button>
                 </div>
+
+                {loginError && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-8 p-8 bg-red-50 border border-red-200 rounded-[2rem] text-red-900 max-w-2xl mx-auto text-left"
+                  >
+                    <div className="flex items-center gap-3 mb-4 text-red-600">
+                      <Info size={24} />
+                      <p className="font-sans font-bold text-sm uppercase tracking-widest">Guía de Solución de Problemas</p>
+                    </div>
+                    
+                    <p className="text-lg font-bold mb-4">{loginError}</p>
+                    
+                    <div className="space-y-4 text-sm bg-white/50 p-6 rounded-2xl border border-red-100">
+                      <p className="font-bold">Para que el acceso funcione fuera de esta pantalla, debes autorizar estos DOS dominios en Firebase:</p>
+                      
+                      <div className="space-y-2 mb-4">
+                        <div className="flex items-center justify-between bg-white p-2 rounded border border-red-100">
+                          <code className="font-mono text-xs">ais-dev-p32wlekctcjsvoilj4our3-633776591902.europe-west2.run.app</code>
+                          <button 
+                            onClick={() => navigator.clipboard.writeText('ais-dev-p32wlekctcjsvoilj4our3-633776591902.europe-west2.run.app')}
+                            className="text-[10px] bg-gray-100 px-2 py-1 rounded hover:bg-gray-200"
+                          >
+                            Copiar
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between bg-white p-2 rounded border border-red-100">
+                          <code className="font-mono text-xs">ais-pre-p32wlekctcjsvoilj4our3-633776591902.europe-west2.run.app</code>
+                          <button 
+                            onClick={() => navigator.clipboard.writeText('ais-pre-p32wlekctcjsvoilj4our3-633776591902.europe-west2.run.app')}
+                            className="text-[10px] bg-gray-100 px-2 py-1 rounded hover:bg-gray-200"
+                          >
+                            Copiar
+                          </button>
+                        </div>
+                      </div>
+
+                      <ol className="list-decimal ml-5 space-y-2">
+                        <li>Ve a tu <a href="https://console.firebase.google.com/project/ai-studio-applet-webapp-8e3be/authentication/settings" target="_blank" rel="noopener noreferrer" className="underline font-bold text-red-600">Consola de Firebase (Sección Dominios)</a>.</li>
+                        <li>Haz clic en <strong>Añadir dominio</strong>.</li>
+                        <li>Pega el primero, dale a añadir, y luego repite con el segundo.</li>
+                        <li>Espera 30 segundos y recarga la web externa.</li>
+                      </ol>
+                    </div>
+
+                    <div className="flex gap-4 mt-6">
+                      <button 
+                        onClick={() => setLoginError(null)}
+                        className="bg-red-600 text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-red-700 transition-colors"
+                      >
+                        Entendido
+                      </button>
+                      <button 
+                        onClick={() => window.location.reload()}
+                        className="bg-white text-red-600 border border-red-200 px-6 py-2 rounded-full text-sm font-bold hover:bg-red-50 transition-colors"
+                      >
+                        Recargar Página
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
                 <p className="mt-8 text-sm text-gray-500 font-sans uppercase tracking-widest">
                   Acceso restringido mediante cuenta de Google
                 </p>
