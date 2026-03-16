@@ -1,0 +1,506 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  MapPin, 
+  Users, 
+  ChevronRight, 
+  Leaf, 
+  UtensilsCrossed, 
+  Info,
+  CheckCircle2,
+  Menu as MenuIcon,
+  X,
+  LogIn,
+  LogOut,
+  Plus,
+  Loader2
+} from 'lucide-react';
+import { zones } from './data/zones';
+import { Zone, Project } from './types';
+import { auth, db } from './firebase';
+import { 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  onAuthStateChanged, 
+  User,
+  signOut 
+} from 'firebase/auth';
+import { 
+  collection, 
+  addDoc, 
+  query, 
+  where, 
+  onSnapshot,
+  serverTimestamp,
+  Timestamp
+} from 'firebase/firestore';
+
+export default function App() {
+  const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [teamName, setTeamName] = useState('');
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setProjects([]);
+      return;
+    }
+
+    const q = query(collection(db, 'projects'), where('ownerId', '==', user.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const projectsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as unknown as Project[];
+      setProjects(projectsData);
+    }, (error) => {
+      console.error("Firestore Error:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const handleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("Login Error:", error);
+    }
+  };
+
+  const handleLogout = () => signOut(auth);
+
+  const createProject = async (zone: Zone) => {
+    if (!user) {
+      handleLogin();
+      return;
+    }
+    
+    setSelectedZone(zone);
+    setIsCreatingProject(true);
+  };
+
+  const confirmCreateProject = async () => {
+    if (!user || !selectedZone || !teamName.trim()) return;
+
+    try {
+      await addDoc(collection(db, 'projects'), {
+        teamName,
+        zoneId: selectedZone.id,
+        ownerId: user.uid,
+        members: [{ id: user.uid, name: user.displayName || 'Líder', role: 'Líder' }],
+        milestones: [
+          { id: '1', title: 'Investigación de Zona', status: 'pending' },
+          { id: '2', title: 'Diseño de Menú', status: 'pending' },
+          { id: '3', title: 'Presentación Final', status: 'pending' }
+        ],
+        menu: [],
+        createdAt: serverTimestamp()
+      });
+      setIsCreatingProject(false);
+      setSelectedZone(null);
+      setTeamName('');
+    } catch (error) {
+      console.error("Project Creation Error:", error);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#f5f5f0] font-serif text-[#1a1a1a]">
+      {/* Navigation */}
+      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-[#5A5A40]/10 px-6 py-4">
+        <div className="max-w-7xl mx-auto flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 bg-[#5A5A40] rounded-full flex items-center justify-center text-white">
+              <Leaf size={20} />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight hidden sm:block">Sabores de Nuestra Tierra</h1>
+            <h1 className="text-xl font-bold tracking-tight sm:hidden">Sabores</h1>
+          </div>
+          
+          <div className="hidden md:flex items-center gap-8 text-sm uppercase tracking-widest font-sans font-medium">
+            <button className="hover:text-[#5A5A40] transition-colors">Inicio</button>
+            <button className="hover:text-[#5A5A40] transition-colors">Zonas</button>
+            <button className="hover:text-[#5A5A40] transition-colors">Metodología</button>
+            
+            {loading ? (
+              <Loader2 className="animate-spin text-[#5A5A40]" size={20} />
+            ) : user ? (
+              <div className="flex items-center gap-4">
+                <div className="flex flex-col items-end">
+                  <span className="text-[10px] text-gray-500 lowercase">{user.email}</span>
+                  <button onClick={handleLogout} className="text-[#5A5A40] hover:underline">Cerrar Sesión</button>
+                </div>
+                <button className="bg-[#5A5A40] text-white px-6 py-2 rounded-full hover:bg-[#4a4a35] transition-colors flex items-center gap-2">
+                  <Users size={16} />
+                  Mis Proyectos ({projects.length})
+                </button>
+              </div>
+            ) : (
+              <button 
+                onClick={handleLogin}
+                className="bg-[#5A5A40] text-white px-6 py-2 rounded-full hover:bg-[#4a4a35] transition-colors flex items-center gap-2"
+              >
+                <LogIn size={16} />
+                Acceso Alumnos
+              </button>
+            )}
+          </div>
+
+          <button className="md:hidden" onClick={() => setIsMenuOpen(true)}>
+            <MenuIcon size={24} />
+          </button>
+        </div>
+      </nav>
+
+      {/* Mobile Menu */}
+      <AnimatePresence>
+        {isMenuOpen && (
+          <motion.div 
+            initial={{ opacity: 0, x: '100%' }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: '100%' }}
+            className="fixed inset-0 z-[60] bg-white p-8 flex flex-col gap-8"
+          >
+            <button className="self-end" onClick={() => setIsMenuOpen(false)}>
+              <X size={32} />
+            </button>
+            <div className="flex flex-col gap-6 text-2xl font-bold">
+              <button onClick={() => setIsMenuOpen(false)}>Inicio</button>
+              <button onClick={() => setIsMenuOpen(false)}>Zonas</button>
+              <button onClick={() => setIsMenuOpen(false)}>Metodología</button>
+              <button className="bg-[#5A5A40] text-white px-6 py-4 rounded-2xl" onClick={() => setIsMenuOpen(false)}>
+                Mi Proyecto
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Hero Section */}
+      <header className="relative h-[70vh] flex items-center justify-center overflow-hidden">
+        <div className="absolute inset-0 z-0">
+          <img 
+            src="https://picsum.photos/seed/murcia-landscape/1920/1080" 
+            alt="Paisaje de Murcia" 
+            className="w-full h-full object-cover opacity-60"
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#f5f5f0]"></div>
+        </div>
+        
+        <div className="relative z-10 text-center px-6 max-w-4xl">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+          >
+            <span className="uppercase tracking-[0.3em] text-sm font-sans font-semibold text-[#5A5A40] mb-4 block">
+              Región de Murcia
+            </span>
+            <h2 className="text-6xl md:text-8xl font-bold mb-6 leading-tight">
+              Sabores de <br />
+              <span className="italic font-light">Nuestra Tierra</span>
+            </h2>
+            <p className="text-xl md:text-2xl text-[#4a4a4a] mb-10 max-w-2xl mx-auto leading-relaxed">
+              Un viaje gastronómico por la sostenibilidad y la tradición de nuestras comarcas.
+            </p>
+            <button className="bg-[#5A5A40] text-white px-10 py-4 rounded-full text-lg font-sans font-semibold hover:bg-[#4a4a35] transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1">
+              Explorar el Mapa
+            </button>
+          </motion.div>
+        </div>
+      </header>
+
+      {/* Project Info */}
+      <section className="py-24 px-6 max-w-7xl mx-auto">
+        <div className="grid md:grid-cols-2 gap-16 items-center">
+          <div>
+            <h3 className="text-4xl font-bold mb-8">El Proyecto</h3>
+            <p className="text-lg text-[#4a4a4a] mb-6 leading-relaxed">
+              Este proyecto invita a los alumnos a sumergirse en la riqueza culinaria de la Región de Murcia. El objetivo es diseñar una <strong>Carta Gastronómica Sostenible</strong> para un restaurante ficticio, arraigado en una de nuestras diez zonas geográficas.
+            </p>
+            <div className="space-y-4">
+              {[
+                "Equipos de máximo 5 personas",
+                "Trabajo por hitos y entregas periódicas",
+                "Foco en productos de proximidad y temporada",
+                "Respeto por la tradición y la biodiversidad local"
+              ].map((item, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <CheckCircle2 className="text-[#5A5A40]" size={20} />
+                  <span className="text-lg">{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <img src="https://picsum.photos/seed/food1/400/500" alt="Plato típico" className="rounded-[2rem] shadow-lg" referrerPolicy="no-referrer" />
+            <img src="https://picsum.photos/seed/food2/400/500" alt="Ingredientes" className="rounded-[2rem] shadow-lg mt-8" referrerPolicy="no-referrer" />
+          </div>
+        </div>
+      </section>
+
+      {/* Zones Grid */}
+      <section className="py-24 bg-white px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h3 className="text-5xl font-bold mb-4">El Mapa del Sabor</h3>
+            <p className="text-xl text-[#4a4a4a]">Selecciona una zona para descubrir su esencia gastronómica.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {zones.map((zone) => (
+              <motion.div
+                key={zone.id}
+                whileHover={{ y: -10 }}
+                className="group cursor-pointer bg-[#f5f5f0] rounded-[2.5rem] overflow-hidden shadow-sm hover:shadow-2xl transition-all"
+                onClick={() => setSelectedZone(zone)}
+              >
+                <div className="h-64 overflow-hidden relative">
+                  <img 
+                    src={zone.image} 
+                    alt={zone.name} 
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute top-4 left-4 bg-white/90 backdrop-blur-sm px-4 py-1 rounded-full text-xs font-sans font-bold uppercase tracking-wider">
+                    {zone.towns[0]}...
+                  </div>
+                </div>
+                <div className="p-8">
+                  <h4 className="text-2xl font-bold mb-2">{zone.name}</h4>
+                  <p className="text-[#4a4a4a] mb-6 line-clamp-2">{zone.description}</p>
+                  <div className="flex items-center text-[#5A5A40] font-sans font-bold text-sm uppercase tracking-widest group-hover:gap-4 transition-all">
+                    Ver Detalles <ChevronRight size={16} />
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Zone Modal */}
+      <AnimatePresence>
+        {selectedZone && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedZone(null)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-white w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-[3rem] shadow-2xl"
+            >
+              <button 
+                onClick={() => setSelectedZone(null)}
+                className="absolute top-6 right-6 z-10 bg-white/80 backdrop-blur-sm p-2 rounded-full hover:bg-white transition-colors"
+              >
+                <X size={24} />
+              </button>
+
+              <div className="grid md:grid-cols-2">
+                <div className="h-64 md:h-full">
+                  <img 
+                    src={selectedZone.image} 
+                    alt={selectedZone.name} 
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+                <div className="p-8 md:p-12">
+                  <div className="flex items-center gap-2 text-[#5A5A40] mb-4">
+                    <MapPin size={18} />
+                    <span className="font-sans font-bold uppercase tracking-widest text-sm">
+                      {selectedZone.towns.join(', ')}
+                    </span>
+                  </div>
+                  <h3 className="text-4xl font-bold mb-6">{selectedZone.name}</h3>
+                  <p className="text-lg text-[#4a4a4a] mb-8 leading-relaxed">
+                    {selectedZone.description}
+                  </p>
+                  
+                  <div className="mb-8">
+                    <h5 className="font-sans font-bold uppercase tracking-widest text-xs text-[#5A5A40] mb-4">Ingredientes Clave</h5>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedZone.keyIngredients.map((ing, i) => (
+                        <span key={i} className="bg-[#f5f5f0] px-4 py-2 rounded-full text-sm font-medium">
+                          {ing}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button 
+                    onClick={() => createProject(selectedZone)}
+                    className="w-full bg-[#5A5A40] text-white py-4 rounded-2xl font-sans font-bold hover:bg-[#4a4a35] transition-all flex items-center justify-center gap-2"
+                  >
+                    <UtensilsCrossed size={20} />
+                    Elegir esta Zona para mi Proyecto
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Create Project Modal */}
+      <AnimatePresence>
+        {isCreatingProject && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsCreatingProject(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="relative bg-white w-full max-w-md p-10 rounded-[3rem] shadow-2xl"
+            >
+              <h4 className="text-3xl font-bold mb-2">Nuevo Proyecto</h4>
+              <p className="text-[#5A5A40] font-sans font-bold uppercase tracking-widest text-xs mb-8">
+                Zona: {selectedZone?.name}
+              </p>
+              
+              <div className="space-y-6">
+                <div>
+                  <label className="block text-sm font-sans font-bold uppercase tracking-widest text-gray-500 mb-2">
+                    Nombre del Equipo
+                  </label>
+                  <input 
+                    type="text" 
+                    value={teamName}
+                    onChange={(e) => setTeamName(e.target.value)}
+                    placeholder="Ej: Los Chefs del Segura"
+                    className="w-full px-6 py-4 bg-[#f5f5f0] rounded-2xl border-none focus:ring-2 focus:ring-[#5A5A40] transition-all outline-none"
+                  />
+                </div>
+                
+                <button 
+                  onClick={confirmCreateProject}
+                  disabled={!teamName.trim()}
+                  className="w-full bg-[#5A5A40] text-white py-4 rounded-2xl font-sans font-bold hover:bg-[#4a4a35] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <Plus size={20} />
+                  Crear Proyecto
+                </button>
+                
+                <button 
+                  onClick={() => setIsCreatingProject(false)}
+                  className="w-full text-gray-500 font-sans font-bold uppercase tracking-widest text-xs hover:text-black transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Methodology Section */}
+      <section className="py-24 bg-[#5A5A40] text-white px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h3 className="text-5xl font-bold mb-4">Metodología de Trabajo</h3>
+            <p className="text-xl text-gray-300">Un proceso estructurado para alcanzar la excelencia gastronómica.</p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-12">
+            {[
+              {
+                title: "1. Formación de Equipos",
+                desc: "Grupos de máximo 5 personas. La diversidad de talentos es clave para una carta equilibrada.",
+                icon: <Users size={32} />
+              },
+              {
+                title: "2. Investigación de Zona",
+                desc: "Cada equipo elige una de las 10 demarcaciones regionales para estudiar su despensa natural.",
+                icon: <MapPin size={32} />
+              },
+              {
+                title: "3. Hitos y Entregas",
+                desc: "Trabajo dinámico con entregas periódicas programadas para asegurar el progreso constante.",
+                icon: <CheckCircle2 size={32} />
+              }
+            ].map((step, i) => (
+              <div key={i} className="bg-white/10 backdrop-blur-sm p-10 rounded-[3rem] border border-white/10">
+                <div className="mb-6 text-[#f5f5f0]">{step.icon}</div>
+                <h4 className="text-2xl font-bold mb-4">{step.title}</h4>
+                <p className="text-gray-300 leading-relaxed">{step.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-[#1a1a1a] text-white py-20 px-6">
+        <div className="max-w-7xl mx-auto grid md:grid-cols-3 gap-12">
+          <div>
+            <div className="flex items-center gap-2 mb-6">
+              <Leaf className="text-[#5A5A40]" size={24} />
+              <h4 className="text-xl font-bold tracking-tight">Sabores de Nuestra Tierra</h4>
+            </div>
+            <p className="text-gray-400 leading-relaxed">
+              Fomentando la educación gastronómica sostenible y el respeto por el producto local en la Región de Murcia.
+            </p>
+          </div>
+          <div>
+            <h5 className="font-sans font-bold uppercase tracking-widest text-xs text-gray-500 mb-6">Enlaces</h5>
+            <div className="flex flex-col gap-4 text-gray-300">
+              <button className="text-left hover:text-white transition-colors">Guía del Alumno</button>
+              <button className="text-left hover:text-white transition-colors">Recursos Sostenibles</button>
+              <button className="text-left hover:text-white transition-colors">Contacto</button>
+            </div>
+          </div>
+          <div>
+            <h5 className="font-sans font-bold uppercase tracking-widest text-xs text-gray-500 mb-6">Metodología</h5>
+            <p className="text-gray-400 mb-6">
+              Basado en el aprendizaje por proyectos (ABP) y la economía circular.
+            </p>
+            <div className="flex gap-4">
+              <div className="w-10 h-10 rounded-full border border-gray-700 flex items-center justify-center hover:border-white transition-colors cursor-pointer">
+                <Info size={18} />
+              </div>
+              <div className="w-10 h-10 rounded-full border border-gray-700 flex items-center justify-center hover:border-white transition-colors cursor-pointer">
+                <Users size={18} />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="max-w-7xl mx-auto mt-20 pt-8 border-top border-gray-800 text-center text-gray-500 text-sm">
+          © 2026 Sabores de Nuestra Tierra - Región de Murcia
+        </div>
+      </footer>
+    </div>
+  );
+}
